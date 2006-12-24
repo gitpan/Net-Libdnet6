@@ -1,0 +1,15 @@
+--- #YAML:1.0
+name:                Net-Libdnet6
+version:             0.10
+abstract:            adds IPv6 support to Net::Libdnet
+license:             Artistic
+generated_by:        ExtUtils::MakeMaker version 6.31
+distribution_type:   module
+requires:     
+    Net::IPv6Addr:                 0
+    Net::Libdnet:                  0
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.2.html
+    version: 1.2
+author:
+    - GomoR <perl@gomor.org>
