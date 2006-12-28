@@ -1,7 +1,8 @@
 Changes
-examples/addr_net.pl
-examples/intf_get_dst.pl
-examples/intf_get.pl
+examples/addr_net6.pl
+examples/intf_get6.pl
+examples/intf_get_dst6.pl
+examples/route_get6.pl
 lib/Net/Libdnet6.pm
 LICENSE
 LICENSE.Artistic

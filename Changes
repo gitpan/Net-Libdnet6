@@ -1,5 +1,11 @@
 Revision history for Perl extension Net::Libdnet6.
 
+0.20 Thu Dec 28 11:02:24 CET 2006
+   - NEW: route_get6()
+   - better support for *BSD systems
+   - all subs now ends with '6'
+   - exports Net::Libdnet subs
+
 0.10 
    - first public release
 

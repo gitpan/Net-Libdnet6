@@ -2,10 +2,10 @@
 use strict;
 use warnings;
 
-my $dst = shift || die("Specify target host\n");
+my $dev = shift || die("Specify network interface\n");
 
 use Data::Dumper;
 use Net::Libdnet6;
 
-my $h = intf_get_dst($dst);
+my $h = intf_get6($dev);
 print Dumper($h)."\n";
