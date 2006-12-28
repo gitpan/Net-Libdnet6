@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Net-Libdnet6
-version:             0.20
+version:             0.21
 abstract:            adds IPv6 support to Net::Libdnet
 license:             Artistic
 generated_by:        ExtUtils::MakeMaker version 6.31

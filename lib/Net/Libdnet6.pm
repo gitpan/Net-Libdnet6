@@ -1,11 +1,11 @@
 #
-# $Id: Libdnet6.pm,v 1.4 2006/12/28 09:58:25 gomor Exp $
+# $Id: Libdnet6.pm,v 1.5 2006/12/28 16:01:28 gomor Exp $
 #
 package Net::Libdnet6;
 use strict;
 use warnings;
 
-our $VERSION = '0.20';
+our $VERSION = '0.21';
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -39,7 +39,30 @@ our @EXPORT = qw(
    route_get
 );
 
+my $pathIfconfig;
+my $pathNetstat;
+
 BEGIN {
+   sub _getPathIfconfig {
+      my @pathList = qw(
+         /sbin/ifconfig /usr/sbin/ifconfig /bin/ifconfig /usr/bin/ifconfig
+      );
+      for (@pathList) {
+         (-f $_) && ($pathIfconfig = $_) && return 1;
+      }
+      undef;
+   }
+
+   sub _getPathNetstat {
+      my @pathList = qw(
+         /bin/netstat /usr/bin/netstat /sbin/netstat /usr/sbin/netstat
+      );
+      for (@pathList) {
+         (-f $_) && ($pathNetstat = $_) && return 1;
+      }
+      undef;
+   }
+
    my $osname = {
       linux   => [ \&_get_routes_linux, ],
       freebsd => [ \&_get_routes_bsd,   ],
@@ -49,11 +72,17 @@ BEGIN {
    };
 
    *_get_routes = $osname->{$^O}->[0] || \&_get_routes_other;
+
+   # XXX: No support under Windows for now
+   unless ($^O =~ /mswin32|cygwin/i) {
+      _getPathIfconfig() or die("Unable to find ifconfig command\n");
+      _getPathNetstat()  or die("Unable to find netstat command\n");
+   }
 }
 
 use Carp;
 use Net::Libdnet;
-require Net::IPv6Addr;
+use Net::IPv6Addr;
 
 sub arp_add6    { croak("Not supported\n") }
 sub arp_delete6 { croak("Not supported\n") }
@@ -72,9 +101,12 @@ sub _to_string_preferred  { Net::IPv6Addr->new(shift())->to_string_preferred  }
 sub _to_string_compressed { Net::IPv6Addr->new(shift())->to_string_compressed }
 
 sub addr_net6 {
-   my $net = shift;
-   # XXX: confess
-   my ($ip, $mask) = split('/', $net);
+   my $ip6 = shift;
+
+   confess('Usage: addr_net6("$ipv6Address/$prefixlen")'."\n")
+      if (! $ip6 || $ip6 !~ /\//);
+
+   my ($ip, $mask) = split('/', $ip6);
    $ip = _to_string_preferred($ip);
    $mask /= 8; # Convert to number of bytes
    my $subnet;
@@ -94,33 +126,30 @@ sub addr_net6 {
 
 sub _get_ip6 {
    my $dev = shift;
+   return undef unless $pathIfconfig;
 
-   # XXX: No IP6 under Windows for now
-   return undef if $^O =~ m/MSWin32|cygwin/i;
-
-   my $buf = `/sbin/ifconfig $dev 2> /dev/null`;
+   my $buf = `$pathIfconfig $dev 2> /dev/null`;
+   return undef unless $buf;
 
    my @ip6 = ();
-   if ($buf) {
-      for (split('\n', $buf)) {
-         my $prefixLenFound;
-         my $lastIp6;
-         for (split(/\s+/)) {
-            s/(?:%[a-z0-9]+)$//; # This removes %lnc0 on BSD systems
+   for (split('\n', $buf)) {
+      my $prefixLenFound;
+      my $lastIp6;
+      for (split(/\s+/)) {
+         s/(?:%[a-z0-9]+)$//; # This removes %lnc0 on BSD systems
 
-            if (Net::IPv6Addr::is_ipv6($_)) {
-               $lastIp6 = lc($_);
-            }
-
-            # Gather prefixlen on *BSD systems
-            if (/^\d+$/ && $prefixLenFound) {
-               $lastIp6 .= '/'.$_;
-               --$prefixLenFound;
-            }
-            ++$prefixLenFound if /^prefixlen$/i;
+         if (Net::IPv6Addr::is_ipv6($_)) {
+            $lastIp6 = lc($_);
          }
-         push @ip6, $lastIp6 if $lastIp6;
+
+         # Gather prefixlen on *BSD systems
+         if (/^\d+$/ && $prefixLenFound) {
+            $lastIp6 .= '/'.$_;
+            --$prefixLenFound;
+         }
+         ++$prefixLenFound if /^prefixlen$/i;
       }
+      push @ip6, $lastIp6 if $lastIp6;
    }
 
    # We return the first IP as the main address, others as aliases
@@ -136,11 +165,13 @@ sub _get_ip6 {
 sub intf_get6 {
    my $dev = shift;
 
-   # XXX: confess()
-   my $dnet = intf_get($dev);
+   confess('Usage: intf_get6($networkInterface)'."\n")
+      unless $dev;
+
+   my $dnet = intf_get($dev) or return undef;
    my ($ip, $aliases) = _get_ip6($dev);
-   $dnet->{addr6}    = $ip       if $ip;
-   $dnet->{aliases6} = $aliases  if $aliases;
+   $dnet->{addr6}    = $ip      if $ip;
+   $dnet->{aliases6} = $aliases if $aliases;
 
    $dnet;
 }
@@ -148,82 +179,86 @@ sub intf_get6 {
 sub _get_routes_other { croak("Not supported\n") }
 
 sub _get_routes_linux {
+   return undef unless $pathNetstat;
+
+   my $buf = `$pathNetstat -rnA inet6 2> /dev/null`;
+   return undef unless $buf;
+
    my @ifRoutes = ();
-   my $buf = `netstat -rnA inet6`;
    my %devIps;
-   if ($buf) {
-      my @lines = split('\n', $buf);
-      for (@lines) {
-         my @elts = split(/\s+/);
-         if ($elts[0]) {
-            if ($elts[0] eq '::/0') { # Default route
-               my $route = {
-                  destination => 'default',
-                  interface   => $elts[-1],
-               };
-               if (Net::IPv6Addr::is_ipv6($elts[1])) {
-                  $route->{nextHop} = $elts[1];
-               }
-               push @ifRoutes, $route;
+   for (split('\n', $buf)) {
+      my @elts = split(/\s+/);
+      if ($elts[0]) {
+         if ($elts[0] eq '::/0') { # Default route
+            my $route = {
+               destination => 'default',
+               interface   => $elts[-1],
+            };
+            if (Net::IPv6Addr::is_ipv6($elts[1])) {
+               $route->{nextHop} = $elts[1];
             }
-            elsif (Net::IPv6Addr::is_ipv6($elts[0])) {
-               my $route = {
-                  destination => $elts[0],
-                  interface   => $elts[-1],
-               };
-               if (Net::IPv6Addr::is_ipv6($elts[1])) {
-                  $route->{nextHop} = $elts[1];
-               }
-               push @ifRoutes, $route;
+            push @ifRoutes, $route;
+         }
+         elsif (Net::IPv6Addr::is_ipv6($elts[0])) {
+            my $route = {
+               destination => $elts[0],
+               interface   => $elts[-1],
+            };
+            if (Net::IPv6Addr::is_ipv6($elts[1])) {
+               $route->{nextHop} = $elts[1];
             }
+            push @ifRoutes, $route;
          }
       }
    }
-   else {
-      carp("Unable to get routes\n");
-      return [];
+
+   if (@ifRoutes > 1) {
+      return \@ifRoutes;
    }
-   \@ifRoutes;
+
+   undef;
 }
 
 sub _get_routes_bsd {
+   return undef unless $pathNetstat;
+
+   my $buf = `$pathNetstat -rnf inet6 2> /dev/null`;
+   return undef unless $buf;
+
    my @ifRoutes = ();
-   my $buf = `netstat -rnf inet6`;
    my %devIps;
-   if ($buf) {
-      my @lines = split('\n', $buf);
-      for (@lines) {
-         my @elts = split(/\s+/);
-         if ($elts[0]) {
-            $elts[0] =~ s/%[a-z]+[0-9]+//;
-            if (Net::IPv6Addr::is_ipv6($elts[0])) {
-               my $route = {
-                  destination => $elts[0],
-                  interface   => $elts[-1],
-               };
-               if (Net::IPv6Addr::is_ipv6($elts[1])) {
-                  $route->{nextHop} = $elts[1];
-               }
-               push @ifRoutes, $route;
+   for (split('\n', $buf)) {
+      my @elts = split(/\s+/);
+      if ($elts[0]) {
+         $elts[0] =~ s/%[a-z]+[0-9]+//;
+         if (Net::IPv6Addr::is_ipv6($elts[0])) {
+            my $route = {
+               destination => $elts[0],
+               interface   => $elts[-1],
+            };
+            if (Net::IPv6Addr::is_ipv6($elts[1])) {
+               $route->{nextHop} = $elts[1];
             }
-            elsif ($elts[0] eq 'default') {
-               my $route = {
-                  destination => $elts[0],
-                  interface   => $elts[-1],
-               };
-               if (Net::IPv6Addr::is_ipv6($elts[1])) {
-                  $route->{nextHop} = $elts[1];
-               }
-               push @ifRoutes, $route;
+            push @ifRoutes, $route;
+         }
+         elsif ($elts[0] eq 'default') {
+            my $route = {
+               destination => $elts[0],
+               interface   => $elts[-1],
+            };
+            if (Net::IPv6Addr::is_ipv6($elts[1])) {
+               $route->{nextHop} = $elts[1];
             }
+            push @ifRoutes, $route;
          }
       }
    }
-   else {
-      carp("Unable to get routes\n");
-      return [];
+
+   if (@ifRoutes > 1) {
+      return \@ifRoutes;
    }
-   \@ifRoutes;
+
+   undef;
 }
 
 sub _is_in_network {
@@ -235,10 +270,13 @@ sub _is_in_network {
 
 sub intf_get_dst6 {
    my $dst = shift;
-   # XXX: confess()
+
+   confess('Usage: intf_get_dst6($targetIpv6Address)'."\n")
+      unless $dst;
+
    $dst = _to_string_preferred($dst);
 
-   my $routes = _get_routes();
+   my $routes = _get_routes() or return undef;
 
    # Search network device list for target6
    my @devList = ();
@@ -272,6 +310,8 @@ sub intf_get_dst6 {
          }
       }
    }
+
+   return undef unless @devs > 0;
 
    # Now, search the correct source IP, if multiple found
    for (@devs) {
@@ -311,16 +351,22 @@ sub _search_next_hop {
 
 sub route_get6 {
    my $dst = shift;
-   # XXX: confess
+
+   confess('Usage: route_get6($targetIpv6Address)'."\n")
+      unless $dst;
+
    $dst = _to_string_preferred($dst);
 
-   my @devs = intf_get_dst6($dst);
+   my @devs = intf_get_dst6($dst) or return undef;
    return undef unless @devs > 0;
 
    my @nextHops = ();
-   for my $r (@{_get_routes()}) {
+   my $routes = _get_routes() or return undef;
+   for my $r (@$routes) {
       push @nextHops, $r->{nextHop} if $r->{nextHop};
    }
+
+   return undef unless @nextHops > 0;
 
    my $nextHop;
    for my $d (@devs) {
