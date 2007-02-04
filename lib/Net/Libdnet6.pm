@@ -1,11 +1,11 @@
 #
-# $Id: Libdnet6.pm,v 1.5 2006/12/28 16:01:28 gomor Exp $
+# $Id: Libdnet6.pm,v 1.7 2007/02/04 14:20:31 gomor Exp $
 #
 package Net::Libdnet6;
 use strict;
 use warnings;
 
-our $VERSION = '0.21';
+our $VERSION = '0.22';
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -104,7 +104,7 @@ sub addr_net6 {
    my $ip6 = shift;
 
    confess('Usage: addr_net6("$ipv6Address/$prefixlen")'."\n")
-      if (! $ip6 || $ip6 !~ /\//);
+      if (! $ip6 || $ip6 !~ /\/\d+/);
 
    my ($ip, $mask) = split('/', $ip6);
    $ip = _to_string_preferred($ip);
@@ -176,7 +176,8 @@ sub intf_get6 {
    $dnet;
 }
 
-sub _get_routes_other { croak("Not supported\n") }
+# XXX: not supported yet
+sub _get_routes_other { undef }
 
 sub _get_routes_linux {
    return undef unless $pathNetstat;
@@ -335,8 +336,11 @@ sub intf_get_dst6 {
 sub _search_next_hop {
    my $dev = shift;
    my ($dst, $hops) = @_;
+
+   return undef unless exists $dev->{addr6};
+
+   my ($net, $mask) = split('/', $dev->{addr6});
    for my $h (@$hops) {
-      my ($net, $mask) = split('/', $dev->{addr6});
       if (! _is_in_network($dst, $net, $mask)) {
          for my $i ($dev->{addr6}, @{$dev->{aliases6}}) {
             my ($iNet, $iMask) = split('/', $i);

@@ -1,5 +1,11 @@
 Revision history for Perl extension Net::Libdnet6.
 
+0.22 Sun Feb  4 15:21:02 CET 2007
+   - bugfix: when a route has no IPv6 address, skip it
+
+0.21 Thu Dec 28 17:13:47 CET 2006
+   - error checking patchs
+
 0.20 Thu Dec 28 11:02:24 CET 2006
    - NEW: route_get6()
    - better support for *BSD systems
