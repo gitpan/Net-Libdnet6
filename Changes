@@ -1,5 +1,8 @@
 Revision history for Perl extension Net::Libdnet6.
 
+0.23 Tue Mar 13 21:01:07 CET 2007
+   - bugfix: removed a nasty warning on IPv6 address gathering
+
 0.22 Sun Feb  4 15:21:02 CET 2007
    - bugfix: when a route has no IPv6 address, skip it
 

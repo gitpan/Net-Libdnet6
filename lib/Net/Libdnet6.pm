@@ -1,11 +1,11 @@
 #
-# $Id: Libdnet6.pm,v 1.7 2007/02/04 14:20:31 gomor Exp $
+# $Id: Libdnet6.pm,v 1.8 2007/03/13 20:00:58 gomor Exp $
 #
 package Net::Libdnet6;
 use strict;
 use warnings;
 
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -138,7 +138,7 @@ sub _get_ip6 {
       for (split(/\s+/)) {
          s/(?:%[a-z0-9]+)$//; # This removes %lnc0 on BSD systems
 
-         if (Net::IPv6Addr::is_ipv6($_)) {
+         if (/^[0-9a-f:]+$/i && Net::IPv6Addr::is_ipv6($_)) {
             $lastIp6 = lc($_);
          }
 
