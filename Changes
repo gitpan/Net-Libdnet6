@@ -1,5 +1,10 @@
 Revision history for Perl extension Net::Libdnet6.
 
+0.24 Thu Jan 13 11:09:35 CET 2011
+   - bugfix: parsing of ifconfig for recent Linux systems
+   - bugfix: in auto-search for good network infertace
+   - update: copyright notice
+
 0.23 Tue Mar 13 21:01:07 CET 2007
    - bugfix: removed a nasty warning on IPv6 address gathering
 

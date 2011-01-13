@@ -1,11 +1,11 @@
 #
-# $Id: Libdnet6.pm,v 1.8 2007/03/13 20:00:58 gomor Exp $
+# $Id: Libdnet6.pm 1678 2011-01-12 12:39:13Z gomor $
 #
 package Net::Libdnet6;
 use strict;
 use warnings;
 
-our $VERSION = '0.23';
+our $VERSION = '0.24';
 
 require Exporter;
 our @ISA = qw(Exporter);
@@ -126,10 +126,10 @@ sub addr_net6 {
 
 sub _get_ip6 {
    my $dev = shift;
-   return undef unless $pathIfconfig;
+   return unless $pathIfconfig;
 
    my $buf = `$pathIfconfig $dev 2> /dev/null`;
-   return undef unless $buf;
+   return unless $buf;
 
    my @ip6 = ();
    for (split('\n', $buf)) {
@@ -138,7 +138,12 @@ sub _get_ip6 {
       for (split(/\s+/)) {
          s/(?:%[a-z0-9]+)$//; # This removes %lnc0 on BSD systems
 
+         # Some Linux systems do not put the prefix with /number
          if (/^[0-9a-f:]+$/i && Net::IPv6Addr::is_ipv6($_)) {
+            $lastIp6 = lc($_);
+         }
+         # Some newer Linux systems do it
+         elsif (/^[0-9a-f:]+\/(\d+)$/i && Net::IPv6Addr::is_ipv6($_)) {
             $lastIp6 = lc($_);
          }
 
@@ -159,7 +164,7 @@ sub _get_ip6 {
    elsif (@ip6 == 1) {
       return $ip6[0];
    }
-   undef;
+   return;
 }
 
 sub intf_get6 {
@@ -277,7 +282,7 @@ sub intf_get_dst6 {
 
    $dst = _to_string_preferred($dst);
 
-   my $routes = _get_routes() or return undef;
+   my $routes = _get_routes() or return;
 
    # Search network device list for target6
    my @devList = ();
@@ -312,11 +317,16 @@ sub intf_get_dst6 {
       }
    }
 
-   return undef unless @devs > 0;
+   return unless @devs > 0;
 
    # Now, search the correct source IP, if multiple found
+   my @finalDevs = ();
    for (@devs) {
-      if (exists $_->{addr6} && exists $_->{aliases6}) {
+      # Skip if interface has no IPv6 address
+      next unless exists $_->{addr6};
+
+      # If it has multiple IPv6 address, choose the good one
+      if (exists $_->{aliases6}) {
          my @ipList = ( $_->{addr6}, @{$_->{aliases6}} );
          for my $i (@ipList) {
             my ($net, $mask) = split('/', $i);
@@ -328,9 +338,15 @@ sub intf_get_dst6 {
             }
          }
       }
+
+      if ($_->{name} =~ /^lo\d*$/ && $dst !~ /^0:0:0:0:0:0:0:1$/) {
+         next;
+      }
+
+      push @finalDevs, $_;
    }
 
-   wantarray ? @devs : $devs[0];
+   wantarray ? @finalDevs : $finalDevs[0];
 }
 
 sub _search_next_hop {
@@ -432,7 +448,7 @@ Patrice E<lt>GomoRE<gt> Auffret
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (c) 2006, Patrice E<lt>GomoRE<gt> Auffret
+Copyright (c) 2006-2011, Patrice E<lt>GomoRE<gt> Auffret
 
 You may distribute this module under the terms of the Artistic license.
 See LICENSE.Artistic file in the source distribution archive.
