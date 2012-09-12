@@ -1,14 +1,15 @@
 #
-# $Id: Libdnet6.pm 1678 2011-01-12 12:39:13Z gomor $
+# $Id: Libdnet6.pm 2001 2012-09-12 18:21:36Z gomor $
 #
 package Net::Libdnet6;
 use strict;
 use warnings;
 
-our $VERSION = '0.24';
+our $VERSION = '0.25';
 
-require Exporter;
-our @ISA = qw(Exporter);
+use base qw(Exporter);
+
+# We also export Net::Libdnet subs (those without 6 at the end)
 our @EXPORT = qw(
    addr_cmp6
    addr_bcast6
@@ -39,8 +40,11 @@ our @EXPORT = qw(
    route_get
 );
 
-my $pathIfconfig;
-my $pathNetstat;
+use Net::Libdnet;
+use Net::IPv6Addr;
+
+my $_pathIfconfig;
+my $_pathNetstat;
 
 BEGIN {
    sub _getPathIfconfig {
@@ -48,9 +52,9 @@ BEGIN {
          /sbin/ifconfig /usr/sbin/ifconfig /bin/ifconfig /usr/bin/ifconfig
       );
       for (@pathList) {
-         (-f $_) && ($pathIfconfig = $_) && return 1;
+         (-f $_) && ($_pathIfconfig = $_) && return 1;
       }
-      undef;
+      return;
    }
 
    sub _getPathNetstat {
@@ -58,9 +62,9 @@ BEGIN {
          /bin/netstat /usr/bin/netstat /sbin/netstat /usr/sbin/netstat
       );
       for (@pathList) {
-         (-f $_) && ($pathNetstat = $_) && return 1;
+         (-f $_) && ($_pathNetstat = $_) && return 1;
       }
-      undef;
+      return;
    }
 
    my $osname = {
@@ -75,27 +79,25 @@ BEGIN {
 
    # XXX: No support under Windows for now
    unless ($^O =~ /mswin32|cygwin/i) {
-      _getPathIfconfig() or die("Unable to find ifconfig command\n");
-      _getPathNetstat()  or die("Unable to find netstat command\n");
+      _getPathIfconfig()
+         or die("[-] ".__PACKAGE__.": Unable to find ifconfig command\n");
+      _getPathNetstat()
+         or die("[-] ".__PACKAGE__.": Unable to find netstat command\n");
    }
 }
 
-use Carp;
-use Net::Libdnet;
-use Net::IPv6Addr;
+sub arp_add6    { die("[-] ".__PACKAGE__.": arp_add6: Not supported\n") }
+sub arp_delete6 { die("[-] ".__PACKAGE__.": arp_delete6: Not supported\n") }
+sub arp_get6    { die("[-] ".__PACKAGE__.": arp_get6: Not supported\n") }
 
-sub arp_add6    { croak("Not supported\n") }
-sub arp_delete6 { croak("Not supported\n") }
-sub arp_get6    { croak("Not supported\n") }
+sub intf_set6     { die("[-] ".__PACKAGE__.": intf_set6: Not supported\n") }
+sub intf_get_src6 { die("[-] ".__PACKAGE__.": intf_get_src6: Not supported\n") }
 
-sub intf_set6     { croak("Not supported\n") }
-sub intf_get_src6 { croak("Not supported\n") }
+sub route_add6    { die("[-] ".__PACKAGE__.": route_add6: Not supported\n") }
+sub route_delete6 { die("[-] ".__PACKAGE__.": route_delete6: Not supported\n") }
 
-sub route_add6    { croak("Not supported\n") }
-sub route_delete6 { croak("Not supported\n") }
-
-sub addr_cmp6   { croak("Not supported\n") }
-sub addr_bcast6 { croak("Not supported\n") }
+sub addr_cmp6   { die("[-] ".__PACKAGE__.": addr_cmp6: Not supported\n") }
+sub addr_bcast6 { die("[-] ".__PACKAGE__.": addr_bcast6: Not supported\n") }
 
 sub _to_string_preferred  { Net::IPv6Addr->new(shift())->to_string_preferred  }
 sub _to_string_compressed { Net::IPv6Addr->new(shift())->to_string_compressed }
@@ -121,14 +123,14 @@ sub addr_net6 {
       }
    }
    $subnet =~ s/:$//;
-   _to_string_compressed($subnet);
+   return _to_string_compressed($subnet);
 }
 
 sub _get_ip6 {
    my $dev = shift;
-   return unless $pathIfconfig;
+   return unless $_pathIfconfig;
 
-   my $buf = `$pathIfconfig $dev 2> /dev/null`;
+   my $buf = `$_pathIfconfig $dev 2> /dev/null`;
    return unless $buf;
 
    my @ip6 = ();
@@ -173,22 +175,22 @@ sub intf_get6 {
    confess('Usage: intf_get6($networkInterface)'."\n")
       unless $dev;
 
-   my $dnet = intf_get($dev) or return undef;
+   my $dnet = intf_get($dev) or return;
    my ($ip, $aliases) = _get_ip6($dev);
    $dnet->{addr6}    = $ip      if $ip;
    $dnet->{aliases6} = $aliases if $aliases;
 
-   $dnet;
+   return $dnet;
 }
 
 # XXX: not supported yet
-sub _get_routes_other { undef }
+sub _get_routes_other { return; }
 
 sub _get_routes_linux {
-   return undef unless $pathNetstat;
+   return unless $_pathNetstat;
 
-   my $buf = `$pathNetstat -rnA inet6 2> /dev/null`;
-   return undef unless $buf;
+   my $buf = `$_pathNetstat -rnA inet6 2> /dev/null`;
+   return unless $buf;
 
    my @ifRoutes = ();
    my %devIps;
@@ -222,21 +224,22 @@ sub _get_routes_linux {
       return \@ifRoutes;
    }
 
-   undef;
+   return;
 }
 
 sub _get_routes_bsd {
-   return undef unless $pathNetstat;
+   return unless $_pathNetstat;
 
-   my $buf = `$pathNetstat -rnf inet6 2> /dev/null`;
-   return undef unless $buf;
+   my $buf = `$_pathNetstat -rnf inet6 2> /dev/null`;
+   return unless $buf;
 
    my @ifRoutes = ();
    my %devIps;
    for (split('\n', $buf)) {
       my @elts = split(/\s+/);
       if ($elts[0]) {
-         $elts[0] =~ s/%[a-z]+[0-9]+//;
+         $elts[0] && $elts[0] =~ s/%[a-z]+[0-9]+//;
+         $elts[1] && $elts[1] =~ s/%[a-z]+[0-9]+//;
          if (Net::IPv6Addr::is_ipv6($elts[0])) {
             my $route = {
                destination => $elts[0],
@@ -264,14 +267,14 @@ sub _get_routes_bsd {
       return \@ifRoutes;
    }
 
-   undef;
+   return;
 }
 
 sub _is_in_network {
    my ($src, $net, $mask) = @_;
    my $net1 = addr_net6($src.'/'.$mask);
    my $net2 = addr_net6($net.'/'.$mask);
-   $net1 eq $net2;
+   return $net1 eq $net2;
 }
 
 sub intf_get_dst6 {
@@ -353,7 +356,7 @@ sub _search_next_hop {
    my $dev = shift;
    my ($dst, $hops) = @_;
 
-   return undef unless exists $dev->{addr6};
+   return unless exists $dev->{addr6};
 
    my ($net, $mask) = split('/', $dev->{addr6});
    for my $h (@$hops) {
@@ -366,7 +369,7 @@ sub _search_next_hop {
          }
       }
    }
-   undef;
+   return;
 }
 
 sub route_get6 {
@@ -377,23 +380,23 @@ sub route_get6 {
 
    $dst = _to_string_preferred($dst);
 
-   my @devs = intf_get_dst6($dst) or return undef;
-   return undef unless @devs > 0;
+   my @devs = intf_get_dst6($dst) or return;
+   return unless @devs > 0;
 
    my @nextHops = ();
-   my $routes = _get_routes() or return undef;
+   my $routes = _get_routes() or return;
    for my $r (@$routes) {
       push @nextHops, $r->{nextHop} if $r->{nextHop};
    }
 
-   return undef unless @nextHops > 0;
+   return unless @nextHops > 0;
 
    my $nextHop;
    for my $d (@devs) {
       $nextHop = _search_next_hop($d, $dst, \@nextHops);
    }
 
-   $nextHop;
+   return $nextHop;
 }
 
 1;
@@ -448,7 +451,7 @@ Patrice E<lt>GomoRE<gt> Auffret
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (c) 2006-2011, Patrice E<lt>GomoRE<gt> Auffret
+Copyright (c) 2006-2012, Patrice E<lt>GomoRE<gt> Auffret
 
 You may distribute this module under the terms of the Artistic license.
 See LICENSE.Artistic file in the source distribution archive.

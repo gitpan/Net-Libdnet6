@@ -12,4 +12,3 @@ README
 t/01-use.t
 t/02-test-pod.t
 t/03-pod-coverage.t
-META.yml                                 Module meta-data (added by MakeMaker)
