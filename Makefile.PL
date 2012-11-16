@@ -1,5 +1,5 @@
 #
-# $Id: Makefile.PL 1999 2011-03-23 16:56:59Z gomor $
+# $Id: Makefile.PL 2003 2012-11-16 15:37:48Z gomor $
 #
 use ExtUtils::MakeMaker;
 
@@ -15,4 +15,5 @@ WriteMakefile(
       Net::Libdnet  => 0,
       Net::IPv6Addr => 0,
    },
+   MIN_PERL_VERSION => '5.6.1',
 );

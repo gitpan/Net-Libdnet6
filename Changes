@@ -1,5 +1,8 @@
 Revision history for Perl extension Net::Libdnet6.
 
+0.26 Fri Nov 16 16:37:22 CET 2012
+   - bugfix: Perl kwalitee
+
 0.25 Wed Sep 12 20:21:04 CEST 2012
    - bugfix: on finding the default gateway IPv6 on BSD systems
    - update: error message scheme

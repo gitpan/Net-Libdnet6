@@ -1,11 +1,11 @@
 #
-# $Id: Libdnet6.pm 2001 2012-09-12 18:21:36Z gomor $
+# $Id: Libdnet6.pm 2003 2012-11-16 15:37:48Z gomor $
 #
 package Net::Libdnet6;
 use strict;
 use warnings;
 
-our $VERSION = '0.25';
+our $VERSION = '0.26';
 
 use base qw(Exporter);
 
